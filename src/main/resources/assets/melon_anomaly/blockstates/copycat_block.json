@@ -1,0 +1,10 @@
+{
+  "variants": {
+    "facing=up": { "model": "melon_anomaly:block/copycat_block" },
+    "facing=down": { "model": "melon_anomaly:block/copycat_block" },
+    "facing=north": { "model": "melon_anomaly:block/copycat_block" },
+    "facing=south": { "model": "melon_anomaly:block/copycat_block" },
+    "facing=west": { "model": "melon_anomaly:block/copycat_block" },
+    "facing=east": { "model": "melon_anomaly:block/copycat_block" }
+  }
+}

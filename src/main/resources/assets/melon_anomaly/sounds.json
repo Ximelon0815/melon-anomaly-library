@@ -1,0 +1,8 @@
+{
+  "electric_shock": {
+    "category": "player",
+    "sounds": [
+      "melon_anomaly:electric_shock"
+    ]
+  }
+}

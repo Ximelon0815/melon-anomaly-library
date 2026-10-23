@@ -1,0 +1,13 @@
+{
+  "item.melon_anomaly.tarot_the_chariot": "Tarot: The Chariot",
+  "item.melon_anomaly.hammer": "Hammer",
+  "item.melon_anomaly.nail": "Anchor Nail",
+  "item.melon_anomaly.monocle": "Teleporting Monocle",
+  "block.melon_anomaly.copycat_block": "Mimicry Shock Moss",
+  "itemGroup.example_tab": "Melon's Anomaly Library",
+  "effect.melon_anomaly.electric_shock": "Electric Shock",
+  "death.attack.chariot_crash_1": "%1$s crashed hard into a wall and shattered into pieces",
+  "death.attack.chariot_crash_2": "%1$s didn't see the wall ahead",
+  "death.attack.electric_shock_1": "%1$s said they wouldn't tell the moss anything",
+  "death.attack.electric_shock_2": "%1$s was paralyzed by bioelectricity"
+}

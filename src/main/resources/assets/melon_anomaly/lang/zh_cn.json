@@ -1,0 +1,13 @@
+{
+  "item.melon_anomaly.tarot_the_chariot": "塔罗牌：战车",
+  "item.melon_anomaly.hammer": "锤子",
+  "item.melon_anomaly.nail": "锚钉",
+  "item.melon_anomaly.monocle": "单片传送眼镜",
+  "block.melon_anomaly.copycat_block": "拟态电击苔藓",
+  "itemGroup.example_tab": "melon的异常库",
+  "effect.melon_anomaly.electric_shock": "触电",
+  "death.attack.chariot_crash_1": "%1$s用力撞上墙壁而粉身碎骨",
+  "death.attack.chariot_crash_2": "%1$s没发现前面有堵墙",
+  "death.attack.electric_shock_1": "%1$s表示什么都不会告诉苔藓",
+  "death.attack.electric_shock_2": "%1$s被生物电烧成了瘫痪"
+}
