@@ -2,6 +2,16 @@ package com.melon.anomaly;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.sounds.SoundSource;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.InteractionResult;
+import net.minecraft.world.effect.MobEffectInstance;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.BlockItem;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.item.context.BlockPlaceContext;
 import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.Level;
@@ -66,42 +76,29 @@ public class CopycatBlock extends DirectionalBlock implements EntityBlock {
     }
 
     @Override
-    public net.minecraft.world.InteractionResult use(BlockState pState, Level pLevel, BlockPos pPos, net.minecraft.world.entity.player.Player pPlayer, net.minecraft.world.InteractionHand pHand, net.minecraft.world.phys.BlockHitResult pHit) {
-        net.minecraft.world.item.ItemStack itemInHand = pPlayer.getItemInHand(pHand);
-        if (itemInHand.getItem() instanceof net.minecraft.world.item.BlockItem blockItem) {
-            Block block = blockItem.getBlock();
-            if (block != this && !pLevel.isClientSide) {
-                if (pLevel.getBlockEntity(pPos) instanceof CopycatBlockEntity copycat) {
-                    copycat.setDisguiseState(block.defaultBlockState());
-                    copycat.setPlayerSetDisguise(true);
-                    if (!pPlayer.isCreative()) {
-                        itemInHand.shrink(1);
-                    }
-                    return net.minecraft.world.InteractionResult.SUCCESS;
-                }
-            }
+    public InteractionResult use(BlockState state, Level level, BlockPos pos, Player player,
+                                 InteractionHand hand, BlockHitResult hit) {
+        ItemStack held = player.getItemInHand(hand);
+        if (level.isClientSide || !(held.getItem() instanceof BlockItem blockItem)
+                || blockItem.getBlock() == this || !(level.getBlockEntity(pos) instanceof CopycatBlockEntity copycat)) {
+            return InteractionResult.PASS;
         }
-        return net.minecraft.world.InteractionResult.PASS;
+        // 手动伪装使用物品对应方块的默认状态，保持原有消耗规则。
+        copycat.setDisguiseState(blockItem.getBlock().defaultBlockState());
+        copycat.setPlayerSetDisguise(true);
+        if (!player.isCreative()) held.shrink(1);
+        return InteractionResult.SUCCESS;
     }
 
     @Override
-    public void setPlacedBy(Level pLevel, BlockPos pPos, BlockState pState, net.minecraft.world.entity.LivingEntity pPlacer, net.minecraft.world.item.ItemStack pStack) {
-        if (!pLevel.isClientSide) {
-            Direction attachDir = pState.getValue(FACING).getOpposite();
-            BlockPos neighborPos = pPos.relative(attachDir);
-            if (!pLevel.hasChunkAt(neighborPos)) {
-                super.setPlacedBy(pLevel, pPos, pState, pPlacer, pStack);
-                return;
-            }
-            BlockState neighborState = pLevel.getBlockState(neighborPos);
-            
-            if (!neighborState.isAir() && neighborState.getBlock() != this) {
-                if (pLevel.getBlockEntity(pPos) instanceof CopycatBlockEntity copycat) {
-                    copycat.setDisguiseState(neighborState);
-                }
-            }
+    public void setPlacedBy(Level level, BlockPos pos, BlockState state, LivingEntity placer, ItemStack stack) {
+        BlockPos neighbor = pos.relative(state.getValue(FACING).getOpposite());
+        if (!level.isClientSide && level.hasChunkAt(neighbor)
+                && level.getBlockEntity(pos) instanceof CopycatBlockEntity copycat) {
+            BlockState disguise = level.getBlockState(neighbor);
+            if (!disguise.isAir() && disguise.getBlock() != this) copycat.setDisguiseState(disguise);
         }
-        super.setPlacedBy(pLevel, pPos, pState, pPlacer, pStack);
+        super.setPlacedBy(level, pos, state, placer, stack);
     }
 
     @Override
@@ -114,17 +111,18 @@ public class CopycatBlock extends DirectionalBlock implements EntityBlock {
     }
 
     @Override
-    public void entityInside(BlockState pState, Level pLevel, BlockPos pPos, net.minecraft.world.entity.Entity pEntity) {
-        if (pEntity instanceof net.minecraft.world.entity.LivingEntity livingEntity) {
-            if (!livingEntity.hasEffect(MelonAnomalyLibrary.ELECTRIC_SHOCK.get())) {
-                if (pLevel.isClientSide && livingEntity instanceof net.minecraft.world.entity.player.Player player) {
-                    pLevel.playLocalSound(player.getX(), player.getY(), player.getZ(), MelonAnomalyLibrary.ELECTRIC_SHOCK_SOUND.get(), net.minecraft.sounds.SoundSource.MASTER, 1.0f, 1.0f, false);
-                }
+    public void entityInside(BlockState state, Level level, BlockPos pos, Entity entity) {
+        if (entity instanceof LivingEntity living) {
+            // 首次接触的本地音效和服务端持续触电分别处理，避免两端重复施加效果。
+            if (level.isClientSide && !living.hasEffect(MelonAnomalyLibrary.ELECTRIC_SHOCK.get())
+                    && living instanceof Player player) {
+                level.playLocalSound(player.getX(), player.getY(), player.getZ(),
+                        MelonAnomalyLibrary.ELECTRIC_SHOCK_SOUND.get(), SoundSource.MASTER, 1.0F, 1.0F, false);
             }
-            if (!pLevel.isClientSide) {
-                livingEntity.addEffect(new net.minecraft.world.effect.MobEffectInstance(MelonAnomalyLibrary.ELECTRIC_SHOCK.get(), 60, 0, false, false, true));
+            if (!level.isClientSide) {
+                living.addEffect(new MobEffectInstance(MelonAnomalyLibrary.ELECTRIC_SHOCK.get(), 60, 0, false, false, true));
             }
         }
-        super.entityInside(pState, pLevel, pPos, pEntity);
+        super.entityInside(state, level, pos, entity);
     }
 }

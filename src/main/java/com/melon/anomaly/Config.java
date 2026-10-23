@@ -8,11 +8,11 @@ import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.event.config.ModConfigEvent;
 import net.minecraftforge.registries.ForgeRegistries;
 
-import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+// 保留已发布的配置键，避免精简代码时改写玩家现有的配置文件。
 @Mod.EventBusSubscriber(modid = MelonAnomalyLibrary.MODID, bus = Mod.EventBusSubscriber.Bus.MOD)
 public class Config
 {

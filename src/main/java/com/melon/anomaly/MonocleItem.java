@@ -19,7 +19,7 @@ import net.minecraftforge.registries.ForgeRegistries;
 import java.util.Set;
 
 public class MonocleItem extends ArmorItem {
-    
+
     private static final Set<String> ALLOWED_BLOCKS = Set.of(
             "scplockdown:white_wall",
             "scplockdown:ceiling",
@@ -42,7 +42,7 @@ public class MonocleItem extends ArmorItem {
                 if (model == null) {
                     model = new MonocleArmorModel<>(MonocleArmorModel.createArmorLayer().bakeRoot());
                 }
-                // Copy basic pose info from default to keep it synced with player animation
+                // 同步原版护甲模型的姿态，保持眼镜随玩家动作变化。
                 model.young = _default.young;
                 model.crouching = _default.crouching;
                 model.riding = _default.riding;
@@ -61,14 +61,14 @@ public class MonocleItem extends ArmorItem {
     public void teleportToValidLocation(Player player, Level level) {
         if (level.isClientSide) return;
         BlockPos currentPos = player.blockPosition();
-        int radius = 30; // Search radius
+        int radius = 30; // 沿用原有传送范围
 
-        // Try 50 times to find a valid spot
+        // 最多尝试 50 次；查询前排除未加载区域，避免同步加载区块。
         for (int i = 0; i < 50; i++) {
             int dx = level.random.nextInt(radius * 2) - radius;
             int dy = level.random.nextInt(radius * 2) - radius;
             int dz = level.random.nextInt(radius * 2) - radius;
-            
+
             BlockPos targetPos = currentPos.offset(dx, dy, dz);
             BlockPos floorPos = targetPos.below();
             double x = targetPos.getX() + 0.5;
@@ -86,23 +86,22 @@ public class MonocleItem extends ArmorItem {
                     || !hasLoadedCollisionArea(level, targetBounds)) {
                 continue;
             }
-            
+
             BlockState floorState = level.getBlockState(floorPos);
             ResourceLocation blockId = ForgeRegistries.BLOCKS.getKey(floorState.getBlock());
-            
-            if (blockId != null && ALLOWED_BLOCKS.contains(blockId.toString())) {
-                // Make sure the 2 blocks above floor are clear
-                if (level.isEmptyBlock(targetPos) && level.isEmptyBlock(targetPos.above())
-                        && level.noCollision(player, targetBounds)) {
-                    player.teleportTo(x, y, z);
-                    return;
-                }
+
+            // 除了白名单地板与两格空气，还检查玩家完整碰撞箱。
+            if (blockId != null && ALLOWED_BLOCKS.contains(blockId.toString())
+                    && level.isEmptyBlock(targetPos) && level.isEmptyBlock(targetPos.above())
+                    && level.noCollision(player, targetBounds)) {
+                player.teleportTo(x, y, z);
+                return;
             }
         }
     }
 
     private static boolean hasLoadedCollisionArea(Level level, AABB bounds) {
-        // Collision shapes can extend from a neighboring block into the destination.
+        // 邻接方块的碰撞形状可能伸入目标区域，区块检查需向外扩一格。
         int minChunkX = Mth.floor(bounds.minX - 1.0) >> 4;
         int maxChunkX = Mth.floor(bounds.maxX + 1.0) >> 4;
         int minChunkZ = Mth.floor(bounds.minZ - 1.0) >> 4;
@@ -115,4 +114,3 @@ public class MonocleItem extends ArmorItem {
         return true;
     }
 }
-

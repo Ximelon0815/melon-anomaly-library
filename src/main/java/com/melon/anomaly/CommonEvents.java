@@ -1,20 +1,23 @@
 package com.melon.anomaly;
 
-import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.world.effect.MobEffectInstance;
+import net.minecraft.world.effect.MobEffects;
+import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
-import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.event.entity.living.LivingEvent;
 import net.minecraftforge.event.entity.living.LivingKnockBackEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
-import net.minecraft.world.damagesource.DamageSource;
 
+/** 事件入口仅分发逻辑，具体异常物的处理分别集中在对应方法中。 */
 @Mod.EventBusSubscriber(modid = MelonAnomalyLibrary.MODID)
 public class CommonEvents {
+    private static final String WAS_COLLIDING = "TarotWasColliding";
 
     public static boolean hasChariot(Player player) {
         Item chariot = MelonAnomalyLibrary.TAROT_THE_CHARIOT.get();
@@ -24,73 +27,42 @@ public class CommonEvents {
 
     @SubscribeEvent
     public static void onPlayerTick(TickEvent.PlayerTickEvent event) {
-        if (event.phase == TickEvent.Phase.END && !event.player.level().isClientSide) {
-            Player player = event.player;
-            
-            // Tarot: The Chariot logic
-            boolean hasChariot = hasChariot(player);
-                                 
-            if (hasChariot) {
-                player.addEffect(new net.minecraft.world.effect.MobEffectInstance(net.minecraft.world.effect.MobEffects.MOVEMENT_SPEED, 2, 4, false, false, false));
-                
-                boolean wasColliding = player.getPersistentData().getBoolean("TarotWasColliding");
-                Vec3 look = player.getLookAngle();
-                AABB forwardBox = player.getBoundingBox().move(look.x * 0.5, 0, look.z * 0.5);
-                boolean isColliding = !player.level().noCollision(player, forwardBox);
-                
-                if (isColliding && !wasColliding) { 
-                    DamageSource baseSource = player.damageSources().generic();
-                    DamageSource source = new DamageSource(baseSource.typeHolder(), baseSource.getEntity(), baseSource.getDirectEntity()) {
-                        @Override
-                        public net.minecraft.network.chat.Component getLocalizedDeathMessage(LivingEntity entity) {
-                            String msgId = entity.level().random.nextBoolean() ? "death.attack.chariot_crash_1" : "death.attack.chariot_crash_2";
-                            return net.minecraft.network.chat.Component.translatable(msgId, entity.getDisplayName());
-                        }
-                    };
-                    player.hurt(source, 4.0F);
-                }
-                player.getPersistentData().putBoolean("TarotWasColliding", isColliding);
-            } else {
-                player.getPersistentData().remove("TarotWasColliding");
-            }
-            
-            // Monocle logic
-            boolean hasMonocle = player.getItemBySlot(EquipmentSlot.HEAD).getItem() == MelonAnomalyLibrary.MONOCLE.get() ||
-                                 CuriosCompat.hasItem(player, MelonAnomalyLibrary.MONOCLE.get());
-                                 
-            if (hasMonocle) {
-                if (player.tickCount % 200 == 0) {
-                    Item monocleItem = MelonAnomalyLibrary.MONOCLE.get();
-                    if (monocleItem instanceof MonocleItem monocle) {
-                        monocle.teleportToValidLocation(player, player.level());
-                    }
-                }
-            }
+        if (event.phase != TickEvent.Phase.END || event.player.level().isClientSide) return;
+        Player player = event.player;
+        tickChariot(player);
+        // 保留原有 200 tick 周期；只在触发时查询眼镜，避免每刻重复检查饰品。
+        if (player.tickCount % 200 == 0
+                && (player.getItemBySlot(EquipmentSlot.HEAD).is(MelonAnomalyLibrary.MONOCLE.get())
+                || CuriosCompat.hasItem(player, MelonAnomalyLibrary.MONOCLE.get()))
+                && MelonAnomalyLibrary.MONOCLE.get() instanceof MonocleItem monocle) {
+            monocle.teleportToValidLocation(player, player.level());
         }
+    }
+
+    private static void tickChariot(Player player) {
+        CompoundTag data = player.getPersistentData();
+        if (!hasChariot(player)) {
+            data.remove(WAS_COLLIDING);
+            return;
+        }
+        player.addEffect(new MobEffectInstance(MobEffects.MOVEMENT_SPEED, 2, 4, false, false, false));
+        Vec3 look = player.getLookAngle();
+        AABB forwardBox = player.getBoundingBox().move(look.x * 0.5, 0, look.z * 0.5);
+        boolean colliding = !player.level().noCollision(player, forwardBox);
+        // 只在进入碰撞状态的瞬间扣血，持续顶墙不会每刻重复伤害。
+        if (colliding && !data.getBoolean(WAS_COLLIDING)) {
+            player.hurt(new AnomalyDamageSource(player.damageSources().generic(), "death.attack.chariot_crash"), 4.0F);
+        }
+        data.putBoolean(WAS_COLLIDING, colliding);
     }
 
     @SubscribeEvent
     public static void onLivingTick(LivingEvent.LivingTickEvent event) {
-        LivingEntity entity = event.getEntity();
-        if (entity.level().isClientSide) return;
-        
-        if (entity.getPersistentData().getBoolean("melon_anomaly:nailed")) {
-            double x = entity.getPersistentData().getDouble("melon_anomaly:nail_x");
-            double y = entity.getPersistentData().getDouble("melon_anomaly:nail_y");
-            double z = entity.getPersistentData().getDouble("melon_anomaly:nail_z");
-            
-            if (entity.getX() != x || entity.getY() != y || entity.getZ() != z) {
-                entity.setDeltaMovement(Vec3.ZERO);
-                entity.teleportTo(x, y, z);
-                entity.hurtMarked = true;
-            }
-        }
+        if (!event.getEntity().level().isClientSide) HammerItem.keepNailedInPlace(event.getEntity());
     }
 
     @SubscribeEvent
     public static void onKnockback(LivingKnockBackEvent event) {
-        if (event.getEntity().getPersistentData().getBoolean("melon_anomaly:nailed")) {
-            event.setCanceled(true);
-        }
+        if (HammerItem.isNailed(event.getEntity())) event.setCanceled(true);
     }
 }

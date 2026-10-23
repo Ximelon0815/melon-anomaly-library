@@ -12,14 +12,11 @@ public class ClientEvents {
     @SubscribeEvent
     public static void onMovementInput(MovementInputUpdateEvent event) {
         Player player = event.getEntity();
-        if (player != null) {
-            if (CommonEvents.hasChariot(player)) {
-                // Force W (forward)
-                event.getInput().up = true;
-                event.getInput().down = false;
-                event.getInput().forwardImpulse = 1.0f;
-                player.setSprinting(true);
-            }
-        }
+        if (player == null || !CommonEvents.hasChariot(player)) return;
+        // 客户端与服务端共用装备判定，手持和饰品栏的战车行为一致。
+        event.getInput().up = true;
+        event.getInput().down = false;
+        event.getInput().forwardImpulse = 1.0f;
+        player.setSprinting(true);
     }
 }

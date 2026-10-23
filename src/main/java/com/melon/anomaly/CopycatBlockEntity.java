@@ -22,6 +22,11 @@ import java.util.List;
 import java.util.Random;
 
 public class CopycatBlockEntity extends BlockEntity {
+    private static final int FEED_INTERVAL = 10;
+    private static final int FEED_COOLDOWN = 400;
+    private static final int WANDER_INTERVAL = 1200;
+    private static final double FEED_RADIUS = 1.5D;
+    private static final List<Direction> DIRECTIONS = List.of(Direction.values());
 
     private BlockState disguiseState = Blocks.MOSS_CARPET.defaultBlockState();
     private boolean playerSetDisguise;
@@ -73,6 +78,7 @@ public class CopycatBlockEntity extends BlockEntity {
                     ? this.level.holderLookup(Registries.BLOCK) : BuiltInRegistries.BLOCK.asLookup(),
                     pTag.getCompound("DisguiseState"));
         }
+        // 更新包只包含外观；缺失的字段不能覆盖服务端已有状态。
         if (pTag.contains("PlayerSetDisguise")) this.playerSetDisguise = pTag.getBoolean("PlayerSetDisguise");
         if (pTag.contains("Timer")) this.timer = pTag.getInt("Timer");
         if (pTag.contains("FeedCooldown")) this.feedCooldown = pTag.getInt("FeedCooldown");
@@ -94,6 +100,7 @@ public class CopycatBlockEntity extends BlockEntity {
         return !this.level.isOutsideBuildHeight(pos) && this.level.hasChunkAt(pos);
     }
 
+    // 保留原有区别：捕食移动要求实体支撑面，自然游荡只排除空气和同类方块。
     private boolean canAttach(BlockPos pos, BlockState state, boolean feeding) {
         return !state.isAir() && (feeding ? state.isSolidRender(this.level, pos)
                 : state.getBlock() != MelonAnomalyLibrary.COPYCAT_BLOCK.get());
@@ -118,7 +125,7 @@ public class CopycatBlockEntity extends BlockEntity {
         BlockState previousTarget = this.level.getBlockState(target);
         BlockState newState = this.getBlockState().setValue(DirectionalBlock.FACING, supportDirection.getOpposite());
 
-        // Keep the source intact until the target and its block entity are available.
+        // 先确认目标方块与实体创建成功，再删除原位置；失败时保留原实体。
         if (!this.level.setBlock(target, newState, Block.UPDATE_ALL)) return false;
         if (!(this.level.getBlockEntity(target) instanceof CopycatBlockEntity newEntity)) {
             if (this.level.getBlockState(target).is(newState.getBlock())) {
@@ -142,41 +149,45 @@ public class CopycatBlockEntity extends BlockEntity {
     public void tick() {
         if (this.level == null || this.level.isClientSide || this.isRemoved()) return;
         if (this.feedCooldown > 0) this.feedCooldown--;
-        // Only persistence changes each tick; avoid comparator notifications from setChanged().
+        // 计时变化仅标记存盘，不通过 setChanged 每刻触发比较器通知。
         this.level.getChunkAt(this.worldPosition).setUnsaved(true);
-        BlockPos current = this.worldPosition;
+        // 按位置错开扫描；成功捕食后本刻不再增加游荡计时。
+        if (this.feedCooldown <= 0 && Math.floorMod(this.level.getGameTime(), FEED_INTERVAL)
+                == Math.floorMod(this.worldPosition.asLong(), FEED_INTERVAL) && tryFeed()) return;
+        if (++this.timer >= WANDER_INTERVAL) wander();
+    }
 
-        // Preserve the ten-tick interval while distributing searches across world positions.
-        if (this.feedCooldown <= 0 && Math.floorMod(this.level.getGameTime(), 10)
-                == Math.floorMod(current.asLong(), 10)) {
-            List<ItemEntity> items = this.level.getEntitiesOfClass(ItemEntity.class, new AABB(current).inflate(1.5D));
-            for (ItemEntity itemEntity : items) {
-                ItemStack stack = itemEntity.getItem();
-                if (stack.getItem().isEdible() && stack.getItem().getFoodProperties() != null
-                        && stack.getItem().getFoodProperties().isMeat()) {
-                    stack.shrink(1);
-                    if (stack.isEmpty()) itemEntity.discard();
-                    this.feedCooldown = 400;
-                    this.timer = 0;
-                    BlockPos target = itemEntity.blockPosition();
-                    if (!target.equals(current) && isLoaded(target) && this.level.isEmptyBlock(target)) {
-                        relocate(target, findAttachment(target, true, List.of(Direction.values())));
-                    }
-                    return;
-                }
+    private boolean tryFeed() {
+        List<ItemEntity> items = this.level.getEntitiesOfClass(ItemEntity.class,
+                new AABB(this.worldPosition).inflate(FEED_RADIUS));
+        for (ItemEntity item : items) {
+            ItemStack stack = item.getItem();
+            if (!stack.getItem().isEdible()) continue;
+            var food = stack.getItem().getFoodProperties();
+            if (food == null || !food.isMeat()) continue;
+            stack.shrink(1);
+            if (stack.isEmpty()) item.discard();
+            this.feedCooldown = FEED_COOLDOWN;
+            this.timer = 0;
+            BlockPos target = item.blockPosition();
+            if (!target.equals(this.worldPosition) && isLoaded(target) && this.level.isEmptyBlock(target)) {
+                relocate(target, findAttachment(target, true, DIRECTIONS));
             }
+            return true;
         }
+        return false;
+    }
 
-        if (++this.timer < 1200) return;
+    private void wander() {
         this.timer = 0;
+        BlockPos current = this.worldPosition;
         List<BlockPos> possibleSpots = new ArrayList<>();
-        List<Direction> directions = List.of(Direction.values());
         for (int x = -1; x <= 1; x++) {
             for (int y = -1; y <= 1; y++) {
                 for (int z = -1; z <= 1; z++) {
                     BlockPos candidate = current.offset(x, y, z);
                     if (!candidate.equals(current) && isLoaded(candidate) && this.level.isEmptyBlock(candidate)
-                            && findAttachment(candidate, false, directions) != null) {
+                            && findAttachment(candidate, false, DIRECTIONS) != null) {
                         possibleSpots.add(candidate);
                     }
                 }
@@ -184,7 +195,7 @@ public class CopycatBlockEntity extends BlockEntity {
         }
         if (possibleSpots.isEmpty()) return;
         BlockPos target = possibleSpots.get(this.random.nextInt(possibleSpots.size()));
-        List<Direction> shuffled = new ArrayList<>(directions);
+        List<Direction> shuffled = new ArrayList<>(DIRECTIONS);
         Collections.shuffle(shuffled, this.random);
         relocate(target, findAttachment(target, false, shuffled));
     }

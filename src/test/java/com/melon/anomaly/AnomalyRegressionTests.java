@@ -5,13 +5,16 @@ import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtUtils;
+import net.minecraft.network.chat.contents.TranslatableContents;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.gametest.GameTestHolder;
 import net.minecraftforge.gametest.PrefixGameTestTemplate;
 
@@ -21,6 +24,47 @@ import java.util.Set;
 @PrefixGameTestTemplate(false)
 public class AnomalyRegressionTests {
     private static final BlockPos CENTER = new BlockPos(1, 1, 1);
+
+    // 清空受伤无敌时间，确保“持续顶墙不重复扣血”由碰撞状态控制。
+    @GameTest(template = "regression_empty", timeoutTicks = 20)
+    public static void chariotDamagesOnlyOnCollisionEntry(GameTestHelper helper) {
+        Player player = survivalPlayer(helper);
+        player.tickCount = 1;
+        player.setYRot(0);
+        player.setXRot(0);
+        player.setItemInHand(InteractionHand.MAIN_HAND, new ItemStack(MelonAnomalyLibrary.TAROT_THE_CHARIOT.get()));
+        BlockPos wall = CENTER.south();
+        helper.setBlock(wall, Blocks.STONE);
+        CommonEvents.onPlayerTick(new TickEvent.PlayerTickEvent(TickEvent.Phase.END, player));
+        helper.assertTrue(player.hasEffect(MobEffects.MOVEMENT_SPEED), "Chariot must retain speed effect");
+        helper.assertTrue(player.getHealth() == 16.0F, "First wall collision should deal four damage");
+        player.invulnerableTime = 0;
+        CommonEvents.onPlayerTick(new TickEvent.PlayerTickEvent(TickEvent.Phase.END, player));
+        helper.assertTrue(player.getHealth() == 16.0F, "Sustained collision must not deal repeated damage");
+        helper.setBlock(wall, Blocks.AIR);
+        CommonEvents.onPlayerTick(new TickEvent.PlayerTickEvent(TickEvent.Phase.END, player));
+        helper.setBlock(wall, Blocks.STONE);
+        CommonEvents.onPlayerTick(new TickEvent.PlayerTickEvent(TickEvent.Phase.END, player));
+        helper.assertTrue(player.getHealth() == 12.0F, "Re-entering collision should deal four damage");
+        player.setItemInHand(InteractionHand.MAIN_HAND, ItemStack.EMPTY);
+        CommonEvents.onPlayerTick(new TickEvent.PlayerTickEvent(TickEvent.Phase.END, player));
+        helper.assertTrue(!player.getPersistentData().contains("TarotWasColliding"), "Unequipping must clear collision state");
+        helper.succeed();
+    }
+
+    @GameTest(template = "regression_empty", timeoutTicks = 20)
+    public static void anomalyDamagePreservesTypesAndMessageKeys(GameTestHelper helper) {
+        Player player = survivalPlayer(helper);
+        var bases = new net.minecraft.world.damagesource.DamageSource[]{player.damageSources().generic(), player.damageSources().magic()};
+        String[] prefixes = {"death.attack.chariot_crash", "death.attack.electric_shock"};
+        for (int i = 0; i < bases.length; i++) {
+            var source = new AnomalyDamageSource(bases[i], prefixes[i]);
+            helper.assertTrue(source.typeHolder().equals(bases[i].typeHolder()), "Damage type must be preserved");
+            String key = ((TranslatableContents) source.getLocalizedDeathMessage(player).getContents()).getKey();
+            helper.assertTrue(key.equals(prefixes[i] + "_1") || key.equals(prefixes[i] + "_2"), "Existing death message keys must be preserved");
+        }
+        helper.succeed();
+    }
 
     @GameTest(template = "regression_empty", timeoutTicks = 20)
     public static void hammerRequiresOffhandNailAndRefunds(GameTestHelper helper) {

@@ -211,3 +211,12 @@ publishing {
 tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8' // Use the UTF-8 charset for Java compilation
 }
+
+// 几何回归在普通 JVM 中执行，不依赖客户端窗口或额外测试框架。
+tasks.register('verifyCopycatGeometry', JavaExec) {
+    dependsOn tasks.named('testClasses')
+    classpath = sourceSets.test.runtimeClasspath
+    javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(17) }
+    mainClass = 'com.melon.anomaly.CopycatGeometryRegression'
+}
+tasks.named('check').configure { dependsOn tasks.named('verifyCopycatGeometry') }
