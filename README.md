@@ -98,3 +98,7 @@ GameTest 与测试资源位于 `src/test/`，不会打包进正式模组 JAR。
 ```powershell
 .\gradlew.bat verifyCopycatGeometry
 ```
+
+## 致谢
+
+代码协助：OpenAI Codex。
